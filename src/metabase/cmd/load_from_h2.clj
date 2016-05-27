@@ -78,6 +78,7 @@
         h2-db    (kdb/create-db (db/jdbc-details {:type :h2, :db (str filename ";IFEXISTS=TRUE")}))] ; TODO - would be nice to add `ACCESS_MODE_DATA=r` but it doesn't work with `AUTO_SERVER=TRUE`
     (db/setup-db)
     (kdb/transaction
+     (k/exec-raw (db/db-connection) "SET CONSTRAINTS ALL DEFERRED")
      (doseq [e     entities
              :let  [objs (kdb/with-db h2-db
                            (k/select (k/database e h2-db)))]

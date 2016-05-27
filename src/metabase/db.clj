@@ -242,7 +242,7 @@
     (symbol? entity)                           (resolve-entity-from-symbol entity)
     :else                                      (throw (Exception. (str "Invalid entity:" entity)))))
 
-(defn- db-connection
+(defn db-connection
   "Get a JDBC connection spec for the Metabase DB."
   []
   (setup-db-if-needed)
