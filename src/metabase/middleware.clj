@@ -226,6 +226,7 @@
 (defn- api-security-headers [] ; don't need to include all the nonsense we include with index.html
   (merge (cache-prevention-headers)
          strict-transport-security-header
+         "Access-Control-Allow-Origin" "*"
          #_(public-key-pins-header)))
 
 (defn- html-page-security-headers [& {:keys [allow-iframes?] }]
@@ -242,7 +243,9 @@
     ;; Prevent Flash / PDF files from including content from site.
     "X-Permitted-Cross-Domain-Policies" "none"
     ;; Tell browser not to use MIME sniffing to guess types of files -- protect against MIME type confusion attacks
-    "X-Content-Type-Options"            "nosniff"}))
+    "X-Content-Type-Options"            "nosniff"
+    "Access-Control-Allow-Origin" "*"
+    }))
 
 (defn add-security-headers
   "Add HTTP headers to tell browsers not to cache API responses."
