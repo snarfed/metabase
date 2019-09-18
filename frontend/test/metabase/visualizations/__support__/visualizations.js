@@ -26,6 +26,8 @@ export const Column = (col = {}) => ({
   display_name: col.display_name || col.name || "column_display_name",
 });
 
+export const BooleanColumn = (col = {}) =>
+  Column({ base_type: "type/Boolean", special_type: null, ...col });
 export const DateTimeColumn = (col = {}) =>
   Column({ base_type: "type/DateTime", special_type: null, ...col });
 export const NumberColumn = (col = {}) =>
@@ -161,7 +163,7 @@ function deepExtend(target, ...sources) {
 }
 
 export function dispatchUIEvent(element, eventName) {
-  let e = document.createEvent("UIEvents");
+  const e = document.createEvent("UIEvents");
   e.initUIEvent(eventName, true, true, window, 1);
   element.dispatchEvent(e);
 }
@@ -199,4 +201,16 @@ export function getFormattedTooltips(hover) {
     }
   }
   return data.map(d => formatValue(d.value, { column: d.col }));
+}
+
+export function createFixture() {
+  document.body.insertAdjacentHTML(
+    "afterbegin",
+    '<div id="fixture" style="height: 800px; width: 1200px;">',
+  );
+  return document.getElementById("fixture");
+}
+
+export function cleanupFixture(element) {
+  element.parentNode.removeChild(element);
 }

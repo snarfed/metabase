@@ -1,7 +1,7 @@
 /* @flow */
 
 import React from "react";
-import { t } from "c-3po";
+import { t } from "ttag";
 import StructuredQuery from "metabase-lib/lib/queries/StructuredQuery";
 
 import type {
@@ -31,12 +31,7 @@ export default ({ question }: ClickActionProps): ClickAction[] => {
       question: () =>
         question
           .summarize(["count"])
-          .breakout([
-            "datetime-field",
-            ["field-id", dateField.id],
-            "as",
-            "day",
-          ]),
+          .breakout(["datetime-field", ["field-id", dateField.id], "day"]),
     },
   ];
 };

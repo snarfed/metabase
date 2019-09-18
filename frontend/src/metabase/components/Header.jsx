@@ -2,11 +2,11 @@ import React, { Component } from "react";
 import ReactDOM from "react-dom";
 
 import CollectionBadge from "metabase/questions/components/CollectionBadge";
-import InputBlurChange from "metabase/components/InputBlurChange.jsx";
-import HeaderModal from "metabase/components/HeaderModal.jsx";
-import TitleAndDescription from "metabase/components/TitleAndDescription.jsx";
-import EditBar from "metabase/components/EditBar.jsx";
-import { t } from "c-3po";
+import InputBlurChange from "metabase/components/InputBlurChange";
+import HeaderModal from "metabase/components/HeaderModal";
+import TitleAndDescription from "metabase/components/TitleAndDescription";
+import EditBar from "metabase/components/EditBar";
+import { t } from "ttag";
 import { getScrollY } from "metabase/lib/dom";
 
 export default class Header extends Component {
@@ -125,7 +125,7 @@ export default class Header extends Component {
       );
     }
 
-    let headerButtons = this.props.headerButtons.map(
+    const headerButtons = this.props.headerButtons.map(
       (section, sectionIndex) => {
         return (
           section &&

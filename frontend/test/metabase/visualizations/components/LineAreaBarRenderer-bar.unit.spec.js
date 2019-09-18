@@ -5,6 +5,8 @@ import {
   StringColumn,
   dispatchUIEvent,
   renderLineAreaBar,
+  createFixture,
+  cleanupFixture,
 } from "../__support__/visualizations";
 
 const DEFAULT_SETTINGS = {
@@ -25,7 +27,7 @@ const DEFAULT_COLUMN_SETTINGS = {
   date_style: "MMMM D, YYYY",
 };
 
-function MainSeries(chartType, settings = {}) {
+function MainSeries(chartType, settings = {}, { key = "A", value = 1 } = {}) {
   return {
     card: {
       display: chartType,
@@ -36,23 +38,39 @@ function MainSeries(chartType, settings = {}) {
     },
     data: {
       cols: [
-        StringColumn({ display_name: "Category", source: "breakout" }),
-        NumberColumn({ display_name: "Sum", source: "aggregation" }),
+        StringColumn({
+          display_name: "Category",
+          source: "breakout",
+          field_ref: ["field-id", 1],
+        }),
+        NumberColumn({
+          display_name: "Sum",
+          source: "aggregation",
+          field_ref: ["field-id", 2],
+        }),
       ],
-      rows: [["A", 1]],
+      rows: [[key, value]],
     },
   };
 }
 
-function ExtraSeries() {
+function ExtraSeries(count = 2) {
   return {
     card: {},
     data: {
       cols: [
-        StringColumn({ display_name: "Category", source: "breakout" }),
-        NumberColumn({ display_name: "Count", source: "aggregation" }),
+        StringColumn({
+          display_name: "Category",
+          source: "breakout",
+          field_ref: ["field-id", 3],
+        }),
+        NumberColumn({
+          display_name: "Count",
+          source: "aggregation",
+          field_ref: ["field-id", 4],
+        }),
       ],
-      rows: [["A", 2]],
+      rows: [["A", count]],
     },
   };
 }
@@ -62,15 +80,11 @@ describe("LineAreaBarRenderer-bar", () => {
   const qsa = selector => [...element.querySelectorAll(selector)];
 
   beforeEach(function() {
-    document.body.insertAdjacentHTML(
-      "afterbegin",
-      '<div id="fixture" style="height: 800px; width: 1200px;">',
-    );
-    element = document.getElementById("fixture");
+    element = createFixture();
   });
 
   afterEach(function() {
-    document.body.removeChild(document.getElementById("fixture"));
+    cleanupFixture(element);
   });
 
   it(`should render an bar chart with 1 series`, () => {
@@ -161,6 +175,50 @@ describe("LineAreaBarRenderer-bar", () => {
     ]);
   });
 
+  it(`should render a normalized bar chart with consistent precision`, () => {
+    const onHoverChange = jest.fn();
+    renderLineAreaBar(
+      element,
+      [
+        MainSeries("bar", { "stackable.stack_type": "normalized" }),
+        ExtraSeries(999),
+      ],
+      { onHoverChange },
+    );
+
+    // hover over each bar
+    dispatchUIEvent(qsa(".bar, .dot")[0], "mousemove");
+    dispatchUIEvent(qsa(".bar, .dot")[1], "mousemove");
+
+    const values = onHoverChange.mock.calls.map(
+      call => getDataKeyValues(call[0])[1].value,
+    );
+    expect(values).toEqual(["0.1%", "99.9%"]);
+  });
+
+  it(`should render an bar normalized chart with just one series`, () => {
+    const onHoverChange = jest.fn();
+    renderLineAreaBar(
+      element,
+      [
+        MainSeries(
+          "bar",
+          { "stackable.stack_type": "normalized" },
+          { value: 3 },
+        ),
+      ],
+      { onHoverChange },
+    );
+
+    dispatchUIEvent(qsa(".bar, .dot")[0], "mousemove");
+
+    const { calls } = onHoverChange.mock;
+    expect(getDataKeyValues(calls[0][0])).toEqual([
+      { key: "Category", value: "A" },
+      { key: "% Sum", value: "100%" },
+    ]);
+  });
+
   it("should replace the aggregation name with the series name", () => {
     const onHoverChange = jest.fn();
     renderLineAreaBar(
@@ -181,6 +239,22 @@ describe("LineAreaBarRenderer-bar", () => {
       { key: "Category", value: "A" },
       { key: "Foo", value: 1 },
     ]);
+  });
+
+  it('should render "(empty)" for nulls', () => {
+    const onHoverChange = jest.fn();
+    renderLineAreaBar(element, [MainSeries("bar", {}, { key: null })], {
+      onHoverChange,
+    });
+
+    dispatchUIEvent(qsa(".bar, .dot")[0], "mousemove");
+
+    const { calls } = onHoverChange.mock;
+    const [{ value }] = getDataKeyValues(calls[0][0]);
+    expect(value).toEqual("(empty)");
+
+    const tick = element.querySelector(".axis.x .tick text");
+    expect(tick.textContent).toEqual("(empty)");
   });
 });
 

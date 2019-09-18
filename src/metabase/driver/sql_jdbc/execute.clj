@@ -14,7 +14,6 @@
              [util :as qputil]]
             [metabase.util
              [date :as du]
-             [honeysql-extensions :as hx]
              [i18n :refer [tru]]])
   (:import [java.sql PreparedStatement ResultSet ResultSetMetaData SQLException Types]
            [java.util Calendar Date TimeZone]))
@@ -48,7 +47,7 @@
   (let [date-string (.getString rs i)]
     (if-let [parsed-date (du/str->date-time date-string (.getTimeZone cal))]
       parsed-date
-      (throw (Exception. (str (tru "Unable to parse date ''{0}''" date-string)))))))
+      (throw (Exception. (tru "Unable to parse date ''{0}''" date-string))))))
 
 (defmulti read-column
   "Read a single value from a single column in a single row from the JDBC ResultSet of a Metabase query. Normal
@@ -147,41 +146,47 @@
 ;;; |                                                Running Queries                                                 |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
+;; TODO - this is pretty similar to what `jdbc/with-db-connection` does, but not exactly the same. See if we can
+;; switch to using that instead?
+(defn- do-with-ensured-connection [db f]
+  (if-let [conn (jdbc/db-find-connection db)]
+    (f conn)
+    (with-open [conn (jdbc/get-connection db)]
+      (f conn))))
+
 (defmacro ^:private with-ensured-connection
   "In many of the clojure.java.jdbc functions, it checks to see if there's already a connection open before opening a
   new one. This macro checks to see if one is open, or will open a new one. Will bind the connection to `conn-sym`."
   {:style/indent 1}
-  [[conn-sym db] & body]
-  `(let [db# ~db]
-     (if-let [~conn-sym (jdbc/db-find-connection db#)]
-       (do ~@body)
-       (with-open [~conn-sym (jdbc/get-connection db#)]
-         ~@body))))
+  [[conn-binding db] & body]
+  `(do-with-ensured-connection ~db (fn [~conn-binding] ~@body)))
 
 (defn- cancelable-run-query
-  "Runs `sql` in such a way that it can be interrupted via a `future-cancel`"
+  "Runs JDBC query, canceling it if an InterruptedException is caught (e.g. if there query is canceled before
+  finishing)."
   [db sql params opts]
   (with-ensured-connection [conn db]
     ;; This is normally done for us by java.jdbc as a result of our `jdbc/query` call
     (with-open [^PreparedStatement stmt (jdbc/prepare-statement conn sql opts)]
-      ;; Need to run the query in another thread so that this thread can cancel it if need be
+      ;; specifiy that we'd like this statement to close once its dependent result sets are closed
+      ;; (Not all drivers support this so ignore Exceptions if they don't)
+      (u/ignore-exceptions
+        (.closeOnCompletion stmt))
       (try
-        (let [query-future (future (jdbc/query conn (into [stmt] params) opts))]
-          ;; This thread is interruptable because it's awaiting the other thread (the one actually running the
-          ;; query). Interrupting this thread means that the client has disconnected (or we're shutting down) and so
-          ;; we can give up on the query running in the future
-          @query-future)
+        (jdbc/query conn (into [stmt] params) opts)
         (catch InterruptedException e
-          (log/warn e (tru "Client closed connection, cancelling query"))
-          ;; This is what does the real work of cancelling the query. We aren't checking the result of
-          ;; `query-future` but this will cause an exception to be thrown, saying the query has been cancelled.
-          (.cancel stmt)
-          (throw e))))))
+          (try
+            (log/warn (tru "Client closed connection, canceling query"))
+            ;; This is what does the real work of canceling the query. We aren't checking the result of
+            ;; `query-future` but this will cause an exception to be thrown, saying the query has been cancelled.
+            (.cancel stmt)
+            (finally
+              (throw e))))))))
 
 (defn- run-query
   "Run the query itself."
   [driver {sql :query, :keys [params remark max-rows]}, ^TimeZone timezone, connection]
-  (let [sql              (str "-- " remark "\n" (hx/unescape-dots sql))
+  (let [sql              (str "-- " remark "\n" sql)
         [columns & rows] (cancelable-run-query
                           connection sql params
                           {:identifiers    identity
@@ -190,26 +195,32 @@
                            :set-parameters (set-parameters-with-timezone timezone)
                            :max-rows       max-rows})]
     {:rows    (or rows [])
-     :columns (map u/keyword->qualified-name columns)}))
+     :columns (map u/qualified-name columns)}))
 
 
 ;;; -------------------------- Running queries: exception handling & disabling auto-commit ---------------------------
 
 (defn- exception->nice-error-message ^String [^SQLException e]
-  (or (->> (.getMessage e)     ; error message comes back like 'Column "ZID" not found; SQL statement: ... [error-code]' sometimes
-           (re-find #"^(.*);") ; the user already knows the SQL, and error code is meaningless
-           second)             ; so just return the part of the exception that is relevant
-      (.getMessage e)))
+  ;; error message comes back like 'Column "ZID" not found; SQL statement: ... [error-code]' sometimes
+  ;; the user already knows the SQL, and error code is meaningless
+  ;; so just return the part of the exception that is relevant
+  (->> (.getMessage e)
+       (re-find #"^(.*);")
+       second))
 
 (defn do-with-try-catch
   "Tries to run the function `f`, catching and printing exception chains if SQLException is thrown,
   and rethrowing the exception as an Exception with a nicely formatted error message."
   {:style/indent 0}
   [f]
-  (try (f)
-       (catch SQLException e
-         (log/error (jdbc/print-sql-exception-chain e))
-         (throw (Exception. (exception->nice-error-message e))))))
+  (try
+    (f)
+    (catch SQLException e
+      (log/error (jdbc/print-sql-exception-chain e))
+      (throw
+       (if-let [nice-error-message (exception->nice-error-message e)]
+         (Exception. nice-error-message e)
+         e)))))
 
 (defn- do-with-auto-commit-disabled
   "Disable auto-commit for this transaction, and make the transaction `rollback-only`, which means when the
@@ -222,8 +233,9 @@
   (.setAutoCommit (jdbc/get-connection conn) false)
   ;; TODO - it would be nice if we could also `.setReadOnly` on the transaction as well, but that breaks setting the
   ;; timezone. Is there some way we can have our cake and eat it too?
-  (try (f)
-       (finally (.rollback (jdbc/get-connection conn)))))
+  (try
+    (f)
+    (finally (.rollback (jdbc/get-connection conn)))))
 
 (defn- do-in-transaction [connection f]
   (jdbc/with-db-transaction [transaction-connection connection]
@@ -234,8 +246,9 @@
 
 (defn- set-timezone!
   "Set the timezone for the current connection."
-  [driver settings connection]
-  (let [timezone      (u/prog1 (:report-timezone settings)
+  {:arglists '([driver settings connection])}
+  [driver {:keys [report-timezone]} connection]
+  (let [timezone      (u/prog1 report-timezone
                         (assert (re-matches #"[A-Za-z\/_]+" <>)))
         format-string (set-timezone-sql driver)
         sql           (format format-string (str \' timezone \'))]

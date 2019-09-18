@@ -3,12 +3,12 @@
 
 import React, { Component } from "react";
 import PropTypes from "prop-types";
-import { t, ngettext, msgid } from "c-3po";
+import { t, ngettext, msgid } from "ttag";
 
 import { createMultiwordSearchRegex } from "metabase/lib/string";
 import { getHumanReadableValue } from "metabase/lib/query/field";
 
-import SelectPicker from "../../../query_builder/components/filters/pickers/SelectPicker.jsx";
+import SelectPicker from "../../../query_builder/components/filters/pickers/SelectPicker";
 
 type Props = {
   value: any,

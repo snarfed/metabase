@@ -16,18 +16,14 @@
 ;;; |                                                  Run a Query                                                   |
 ;;; +----------------------------------------------------------------------------------------------------------------+
 
-(defn- qualify+escape ^clojure.lang.Keyword
-  ([table]       (hx/qualify-and-escape-dots (:schema table) (:name table)))
-  ([table field] (hx/qualify-and-escape-dots (:schema table) (:name table) (:name field))))
-
 ;; TODO - Seems like this is only used in a handful of places, consider moving to util namespace
 (defn query
   "Execute a `honeysql-form` query against `database`, `driver`, and optionally `table`."
   ([driver database honeysql-form]
    (jdbc/query (sql-jdbc.conn/db->pooled-connection-spec database)
-               (sql.qp/honeysql-form->sql+args driver honeysql-form)))
+               (sql.qp/format-honeysql driver honeysql-form)))
   ([driver database table honeysql-form]
-   (query driver database (merge {:from [(qualify+escape table)]}
+   (query driver database (merge {:from [(sql.qp/->honeysql driver (hx/identifier :table (:schema table) (:name table)))]}
                                  honeysql-form))))
 
 
