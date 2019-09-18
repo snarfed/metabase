@@ -5,7 +5,8 @@
   {"install-for-building-drivers" ["with-profile" "+install-for-building-drivers" "install"]}
 
   :dependencies
-  [[com.google.api-client/google-api-client "1.27.0"]]
+  [[com.google.api-client/google-api-client "1.27.0"]
+   [com.google.apis/google-api-services-bigquery "v2-rev20181202-1.27.0"]]
 
   :profiles
   {:provided
